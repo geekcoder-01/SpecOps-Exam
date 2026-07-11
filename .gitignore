@@ -37,3 +37,7 @@ desktop.ini
 *.log
 *.tmp
 *.temp
+
+# Uploaded question source files
+backend/uploads/
+uploads/

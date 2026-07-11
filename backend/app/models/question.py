@@ -18,7 +18,7 @@ class Question(Base):
             "question_bank_sets.bank_id",
             ondelete="CASCADE",
         ),
-        nullable=True,
+        nullable=False,
         index=True,
     )
 
@@ -26,9 +26,9 @@ class Question(Base):
         Integer,
         ForeignKey(
             "question_library_subjects.library_subject_id",
-            ondelete="SET NULL",
+            ondelete="RESTRICT",
         ),
-        nullable=True,
+        nullable=False,
         index=True,
     )
 
@@ -47,9 +47,11 @@ class Question(Base):
     option_c = Column(Text, nullable=True)
     option_d = Column(Text, nullable=True)
 
+    # MCQ, numerical, and descriptive questions may use this.
+    # Upload-answer questions do not require a correct answer.
     correct_answer = Column(
         Text,
-        nullable=False,
+        nullable=True,
     )
 
     marks = Column(
@@ -62,7 +64,10 @@ class Question(Base):
         nullable=False,
     )
 
+    # Legacy compatibility field.
+    # New questions use library_subject_id as the source of truth.
+    # We will remove this column in a later cleanup migration.
     subject = Column(
         String(100),
-        nullable=False,
-    )
+        nullable=True,
+    )   

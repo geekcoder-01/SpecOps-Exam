@@ -34,6 +34,8 @@ from app.models.student_exam import StudentExam
 from app.models.question_bank_set import QuestionBankSet
 from app.models.exam_section import ExamSection
 from app.models.question_library_subject import QuestionLibrarySubject
+from app.models.question_import import QuestionImport
+from app.models.draft_question import DraftQuestion
 
 target_metadata = Base.metadata
 

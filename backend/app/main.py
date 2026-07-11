@@ -16,6 +16,8 @@ from app.models.student_exam import StudentExam
 from app.models.question_bank_set import QuestionBankSet
 from app.models.exam_section import ExamSection
 from app.models.question_library_subject import QuestionLibrarySubject
+from app.models.question_import import QuestionImport
+from app.models.draft_question import DraftQuestion
 
 
 # Routes
@@ -28,6 +30,8 @@ from app.routes import exam_question
 from app.routes import question_bank_set
 from app.routes import profile
 from app.routes import question_library_subject
+from app.routes import question_import
+from app.routes import draft_question
 
 Base.metadata.create_all(bind=engine)
 
@@ -94,6 +98,18 @@ app.include_router(
     question_library_subject.router,
     prefix="/question-libraries",
     tags=["Question Library Subjects"]
+)
+
+app.include_router(
+    question_import.router,
+    prefix="/question-imports",
+    tags=["Question Imports"],
+)
+
+app.include_router(
+    draft_question.router,
+    prefix="/draft-questions",
+    tags=["Draft Questions"],
 )
 
 @app.get("/")
