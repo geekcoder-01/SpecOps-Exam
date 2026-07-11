@@ -11,7 +11,7 @@ import {
   FaBrain,
   FaCheckCircle,
   FaEdit,
-  FaFilePdf,
+  FaFileImport,
   FaLayerGroup,
   FaPlus,
   FaQuestionCircle,
@@ -19,52 +19,65 @@ import {
   FaTrash,
 } from "react-icons/fa";
 
-export default function QuestionLibraryWorkspace({ params }) {
+export default function QuestionLibraryWorkspace({
+  params,
+}) {
   const { bankId } = use(params);
 
   const [library, setLibrary] = useState(null);
   const [subjects, setSubjects] = useState([]);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [subjectName, setSubjectName] = useState("");
+  const [activeTab, setActiveTab] =
+    useState("overview");
+
+  const [subjectName, setSubjectName] =
+    useState("");
+
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [addingSubject, setAddingSubject] = useState(false);
+
+  const [addingSubject, setAddingSubject] =
+    useState(false);
 
   useEffect(() => {
     loadWorkspace();
   }, [bankId]);
 
-  const getHeaders = () => {
-    const token = localStorage.getItem("token");
-
-    return {
-      Authorization: `Bearer ${token}`,
-    };
-  };
-
-  const redirectToExaminerLogin = () => {
-    localStorage.clear();
-    window.location.href = "/examiner/login";
-  };
+  const getHeaders = () => ({
+    Authorization: `Bearer ${localStorage.getItem(
+      "token"
+    )}`,
+  });
 
   const loadWorkspace = async () => {
     try {
       setLoading(true);
 
-      const [libraryResponse, subjectsResponse] = await Promise.all([
-        api.get(`/question-libraries/${bankId}`, {
-          headers: getHeaders(),
-        }),
-        api.get(`/question-libraries/${bankId}/subjects`, {
-          headers: getHeaders(),
-        }),
+      const [
+        libraryResponse,
+        subjectsResponse,
+      ] = await Promise.all([
+        api.get(
+          `/question-libraries/${bankId}`,
+          {
+            headers: getHeaders(),
+          }
+        ),
+
+        api.get(
+          `/question-libraries/${bankId}/subjects`,
+          {
+            headers: getHeaders(),
+          }
+        ),
       ]);
 
       setLibrary(libraryResponse.data);
       setSubjects(subjectsResponse.data);
     } catch (error) {
       if (error.response?.status === 401) {
-        redirectToExaminerLogin();
+        localStorage.clear();
+        window.location.href =
+          "/examiner/login";
         return;
       }
 
@@ -100,10 +113,12 @@ export default function QuestionLibraryWorkspace({ params }) {
 
       toast.success("Subject added successfully");
       setSubjectName("");
+
       await loadWorkspace();
     } catch (error) {
       toast.error(
-        error.response?.data?.detail || "Unable to add subject"
+        error.response?.data?.detail ||
+          "Unable to add subject"
       );
     } finally {
       setAddingSubject(false);
@@ -116,7 +131,7 @@ export default function QuestionLibraryWorkspace({ params }) {
       subject.subject_name
     );
 
-    if (!newName || !newName.trim()) return;
+    if (!newName?.trim()) return;
 
     try {
       await api.put(
@@ -133,7 +148,8 @@ export default function QuestionLibraryWorkspace({ params }) {
       await loadWorkspace();
     } catch (error) {
       toast.error(
-        error.response?.data?.detail || "Unable to update subject"
+        error.response?.data?.detail ||
+          "Unable to update subject"
       );
     }
   };
@@ -157,7 +173,8 @@ export default function QuestionLibraryWorkspace({ params }) {
       await loadWorkspace();
     } catch (error) {
       toast.error(
-        error.response?.data?.detail || "Unable to delete subject"
+        error.response?.data?.detail ||
+          "Unable to delete subject"
       );
     }
   };
@@ -171,36 +188,44 @@ export default function QuestionLibraryWorkspace({ params }) {
 
     return questions.filter((question) => {
       return (
-        question.question_text?.toLowerCase().includes(query) ||
-        question.question_type?.toLowerCase().includes(query) ||
-        question.subject?.toLowerCase().includes(query) ||
-        question.difficulty_level?.toLowerCase().includes(query)
+        question.question_text
+          ?.toLowerCase()
+          .includes(query) ||
+        question.question_type
+          ?.toLowerCase()
+          .includes(query) ||
+        question.subject
+          ?.toLowerCase()
+          .includes(query) ||
+        question.difficulty_level
+          ?.toLowerCase()
+          .includes(query)
       );
     });
   }, [questions, search]);
 
-  const questionStatistics = useMemo(() => {
+  const statistics = useMemo(() => {
     return questions.reduce(
-      (statistics, question) => {
-        const type = question.question_type?.toLowerCase();
+      (result, question) => {
+        const type =
+          question.question_type?.toLowerCase();
 
-        statistics.total += 1;
+        result.total += 1;
 
-        if (type === "mcq") {
-          statistics.mcq += 1;
-        } else if (type === "multi_select") {
-          statistics.multiSelect += 1;
-        } else if (type === "short_answer") {
-          statistics.shortAnswer += 1;
-        } else if (type === "long_answer") {
-          statistics.longAnswer += 1;
-        } else if (type === "image_upload") {
-          statistics.imageUpload += 1;
-        } else {
-          statistics.other += 1;
-        }
+        if (type === "mcq") result.mcq += 1;
+        else if (type === "multi_select")
+          result.multiSelect += 1;
+        else if (type === "short_answer")
+          result.shortAnswer += 1;
+        else if (type === "long_answer")
+          result.longAnswer += 1;
+        else if (type === "true_false")
+          result.trueFalse += 1;
+        else if (type === "numerical")
+          result.numerical += 1;
+        else result.other += 1;
 
-        return statistics;
+        return result;
       },
       {
         total: 0,
@@ -208,7 +233,8 @@ export default function QuestionLibraryWorkspace({ params }) {
         multiSelect: 0,
         shortAnswer: 0,
         longAnswer: 0,
-        imageUpload: 0,
+        trueFalse: 0,
+        numerical: 0,
         other: 0,
       }
     );
@@ -240,7 +266,7 @@ export default function QuestionLibraryWorkspace({ params }) {
       <div className="mx-auto max-w-7xl">
         <Link
           href="/examiner/questions"
-          className="mb-6 inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-white"
+          className="mb-6 inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white"
         >
           <FaArrowLeft />
           Back to Question Libraries
@@ -258,13 +284,16 @@ export default function QuestionLibraryWorkspace({ params }) {
                   Question Libraries / {library.title}
                 </p>
 
-                <h1 className="text-3xl font-bold">{library.title}</h1>
+                <h1 className="text-3xl font-bold">
+                  {library.title}
+                </h1>
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Badge text={library.subject} color="blue" />
-
                   {library.purpose && (
-                    <Badge text={library.purpose} color="purple" />
+                    <Badge
+                      text={library.purpose}
+                      color="purple"
+                    />
                   )}
 
                   <Badge
@@ -283,7 +312,9 @@ export default function QuestionLibraryWorkspace({ params }) {
 
               <SummaryItem
                 label="Questions"
-                value={library.question_count || 0}
+                value={
+                  library.question_count || 0
+                }
               />
 
               <SummaryItem
@@ -297,37 +328,47 @@ export default function QuestionLibraryWorkspace({ params }) {
         <div className="mt-7 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
           <WorkspaceTab
             active={activeTab === "overview"}
-            onClick={() => setActiveTab("overview")}
+            onClick={() =>
+              setActiveTab("overview")
+            }
             icon={<FaLayerGroup />}
             text="Overview"
           />
 
           <WorkspaceTab
             active={activeTab === "questions"}
-            onClick={() => setActiveTab("questions")}
+            onClick={() =>
+              setActiveTab("questions")
+            }
             icon={<FaQuestionCircle />}
             text="Questions"
           />
 
           <WorkspaceTab
-            active={activeTab === "upload"}
-            onClick={() => setActiveTab("upload")}
-            icon={<FaFilePdf />}
-            text="Upload PDF"
+            active={activeTab === "import"}
+            onClick={() =>
+              setActiveTab("import")
+            }
+            icon={<FaFileImport />}
+            text="Import Questions"
           />
 
           <WorkspaceTab
             active={activeTab === "generator"}
-            onClick={() => setActiveTab("generator")}
+            onClick={() =>
+              setActiveTab("generator")
+            }
             icon={<FaBrain />}
             text="AI Generator"
           />
 
           <WorkspaceTab
             active={activeTab === "review"}
-            onClick={() => setActiveTab("review")}
+            onClick={() =>
+              setActiveTab("review")
+            }
             icon={<FaCheckCircle />}
-            text="Review"
+            text="Review Queue"
           />
         </div>
 
@@ -335,7 +376,7 @@ export default function QuestionLibraryWorkspace({ params }) {
           <OverviewTab
             library={library}
             subjects={subjects}
-            statistics={questionStatistics}
+            statistics={statistics}
             subjectName={subjectName}
             setSubjectName={setSubjectName}
             addSubject={addSubject}
@@ -355,11 +396,19 @@ export default function QuestionLibraryWorkspace({ params }) {
           />
         )}
 
-        {activeTab === "upload" && <UploadPdfTab />}
+        {activeTab === "import" && (
+          <ImportQuestionsTab
+            subjects={subjects}
+          />
+        )}
 
-        {activeTab === "generator" && <AiGeneratorTab />}
+        {activeTab === "generator" && (
+          <AiGeneratorTab subjects={subjects} />
+        )}
 
-        {activeTab === "review" && <ReviewTab />}
+        {activeTab === "review" && (
+          <ReviewQueueTab />
+        )}
       </div>
     </DashboardLayout>
   );
@@ -385,10 +434,13 @@ function OverviewTab({
             value={statistics.total}
           />
 
-          <StatisticCard title="MCQ" value={statistics.mcq} />
+          <StatisticCard
+            title="Single MCQ"
+            value={statistics.mcq}
+          />
 
           <StatisticCard
-            title="Multiple Select"
+            title="Multiple Correct"
             value={statistics.multiSelect}
           />
 
@@ -403,26 +455,40 @@ function OverviewTab({
           />
 
           <StatisticCard
-            title="Image Upload"
-            value={statistics.imageUpload}
+            title="True / False"
+            value={statistics.trueFalse}
           />
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-          <h2 className="text-2xl font-bold">Library Information</h2>
+          <h2 className="text-2xl font-bold">
+            Library Information
+          </h2>
 
           <div className="mt-6 grid gap-5 md:grid-cols-2">
-            <InformationRow label="Title" value={library.title} />
-            <InformationRow label="Subject" value={library.subject} />
+            <InformationRow
+              label="Title"
+              value={library.title}
+            />
 
             <InformationRow
               label="Purpose"
-              value={library.purpose || "No specific purpose"}
+              value={
+                library.purpose ||
+                "No specific purpose"
+              }
+            />
+
+            <InformationRow
+              label="Subjects"
+              value={subjects.length}
             />
 
             <InformationRow
               label="Questions"
-              value={library.question_count || 0}
+              value={
+                library.question_count || 0
+              }
             />
           </div>
         </div>
@@ -430,26 +496,34 @@ function OverviewTab({
 
       <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
         <div className="mb-5">
-          <h2 className="text-2xl font-bold">Library Subjects</h2>
+          <h2 className="text-2xl font-bold">
+            Library Subjects
+          </h2>
 
           <p className="mt-1 text-sm text-slate-400">
-            Add one subject for a regular library or multiple subjects for
-            competitive-exam libraries.
+            Add one subject for a normal library or
+            multiple subjects for a competitive-exam
+            library.
           </p>
         </div>
 
-        <form onSubmit={addSubject} className="flex gap-3">
+        <form
+          onSubmit={addSubject}
+          className="flex gap-3"
+        >
           <input
             value={subjectName}
-            onChange={(event) => setSubjectName(event.target.value)}
+            onChange={(event) =>
+              setSubjectName(event.target.value)
+            }
             placeholder="Example: Mathematics"
-            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none transition focus:border-purple-500"
+            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-purple-500"
           />
 
           <button
             type="submit"
             disabled={addingSubject}
-            className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-3 font-semibold transition hover:bg-purple-700 disabled:opacity-60"
+            className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-3 font-semibold hover:bg-purple-700 disabled:opacity-60"
           >
             <FaPlus />
             Add
@@ -483,7 +557,9 @@ function OverviewTab({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => renameSubject(subject)}
+                    onClick={() =>
+                      renameSubject(subject)
+                    }
                     className="rounded-lg border border-white/10 p-2 text-blue-400 hover:bg-blue-500/10"
                     title="Rename subject"
                   >
@@ -492,7 +568,9 @@ function OverviewTab({
 
                   <button
                     type="button"
-                    onClick={() => deleteSubject(subject)}
+                    onClick={() =>
+                      deleteSubject(subject)
+                    }
                     className="rounded-lg border border-white/10 p-2 text-red-400 hover:bg-red-500/10"
                     title="Delete subject"
                   >
@@ -519,17 +597,19 @@ function QuestionsTab({
     <section className="mt-7 rounded-3xl border border-white/10 bg-white/5 p-6">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Questions</h2>
+          <h2 className="text-2xl font-bold">
+            Questions
+          </h2>
 
           <p className="mt-1 text-sm text-slate-400">
-            Manage all manually created, imported, and AI-generated questions
-            in this library.
+            Manage manually created, imported, and
+            AI-generated questions.
           </p>
         </div>
 
         <Link
           href={`/examiner/questions/${bankId}/add`}
-          className="flex w-fit items-center gap-2 rounded-xl bg-purple-600 px-5 py-3 font-semibold transition hover:bg-purple-700"
+          className="flex w-fit items-center gap-2 rounded-xl bg-purple-600 px-5 py-3 font-semibold hover:bg-purple-700"
         >
           <FaPlus />
           Add Question
@@ -541,15 +621,18 @@ function QuestionsTab({
 
         <input
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) =>
+            setSearch(event.target.value)
+          }
           placeholder="Search questions..."
-          className="w-full rounded-xl border border-white/10 bg-slate-900 py-3 pl-11 pr-4 outline-none transition focus:border-purple-500"
+          className="w-full rounded-xl border border-white/10 bg-slate-900 py-3 pl-11 pr-4 outline-none focus:border-purple-500"
         />
       </div>
 
       {subjects.length === 0 && (
         <div className="mt-6 rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-200">
-          Add at least one library subject before creating new questions.
+          Add at least one library subject before
+          creating questions.
         </div>
       )}
 
@@ -563,7 +646,8 @@ function QuestionsTab({
             </h3>
 
             <p className="mt-2 text-slate-400">
-              Add questions manually or import them from a PDF.
+              Add questions manually, import a document,
+              or generate questions using AI.
             </p>
           </div>
         ) : (
@@ -572,52 +656,32 @@ function QuestionsTab({
               key={question.questionbank_id}
               className="rounded-2xl border border-white/10 bg-slate-900 p-5"
             >
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold">
-                    {question.question_text}
-                  </h3>
+              <h3 className="text-lg font-semibold">
+                {question.question_text}
+              </h3>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge
-                      text={question.question_type}
-                      color="purple"
-                    />
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Badge
+                  text={question.question_type}
+                  color="purple"
+                />
 
-                    <Badge
-                      text={question.subject}
-                      color="blue"
-                    />
+                <Badge
+                  text={question.subject}
+                  color="blue"
+                />
 
-                    <Badge
-                      text={`${question.marks} Marks`}
-                      color="green"
-                    />
+                <Badge
+                  text={`${question.marks} Marks`}
+                  color="green"
+                />
 
-                    <Badge
-                      text={question.difficulty_level}
-                      color="orange"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    title="Edit question"
-                    className="rounded-lg border border-white/10 p-2 text-blue-400 hover:bg-blue-500/10"
-                  >
-                    <FaEdit />
-                  </button>
-
-                  <button
-                    type="button"
-                    title="Delete question"
-                    className="rounded-lg border border-white/10 p-2 text-red-400 hover:bg-red-500/10"
-                  >
-                    <FaTrash />
-                  </button>
-                </div>
+                <Badge
+                  text={
+                    question.difficulty_level
+                  }
+                  color="orange"
+                />
               </div>
             </article>
           ))
@@ -627,65 +691,275 @@ function QuestionsTab({
   );
 }
 
-function UploadPdfTab() {
+function ImportQuestionsTab({ subjects }) {
+  const [subjectId, setSubjectId] =
+    useState("");
+
+  const [selectedFile, setSelectedFile] =
+    useState(null);
+
+  const handleFile = (event) => {
+    const file = event.target.files?.[0];
+    setSelectedFile(file || null);
+  };
+
+  const startImport = () => {
+    if (!subjectId) {
+      toast.error(
+        "Select the subject where questions will be added"
+      );
+      return;
+    }
+
+    if (!selectedFile) {
+      toast.error("Choose a file to import");
+      return;
+    }
+
+    toast.success(
+      "File selected. AI extraction will be connected in the next stage."
+    );
+  };
+
   return (
     <section className="mt-7 rounded-3xl border border-white/10 bg-white/5 p-7">
-      <h2 className="text-2xl font-bold">Upload Question PDF</h2>
+      <h2 className="text-2xl font-bold">
+        Import Questions
+      </h2>
 
       <p className="mt-2 text-slate-400">
-        Upload a question-bank PDF. AI extraction and examiner review will be
-        connected in the next stage.
+        Import questions from PDF, Word documents, or
+        images. Extracted questions will be placed in the
+        Review Queue before saving.
       </p>
 
-      <div className="mt-7 rounded-3xl border-2 border-dashed border-purple-500/30 bg-purple-500/5 p-14 text-center">
-        <FaFilePdf className="mx-auto text-6xl text-purple-400" />
+      <div className="mt-7 max-w-xl">
+        <label className="block">
+          <span className="mb-2 block text-sm font-medium text-slate-300">
+            Add extracted questions to
+          </span>
+
+          <select
+            value={subjectId}
+            onChange={(event) =>
+              setSubjectId(event.target.value)
+            }
+            className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-purple-500"
+          >
+            <option value="">
+              Select library subject
+            </option>
+
+            {subjects.map((subject) => (
+              <option
+                key={subject.library_subject_id}
+                value={
+                  subject.library_subject_id
+                }
+              >
+                {subject.subject_name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="mt-7 rounded-3xl border-2 border-dashed border-purple-500/30 bg-purple-500/5 p-12 text-center">
+        <FaFileImport className="mx-auto text-6xl text-purple-400" />
 
         <h3 className="mt-5 text-2xl font-bold">
-          Drag and drop your PDF here
+          Choose a question file
         </h3>
 
         <p className="mt-2 text-slate-400">
-          PDF files only. AI will extract questions for review.
+          PDF, DOC, DOCX, JPG, JPEG, PNG, and WEBP are
+          supported.
         </p>
 
-        <button
-          type="button"
-          className="mt-6 rounded-xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-700"
-        >
-          Choose PDF
-        </button>
+        <label className="mt-6 inline-flex cursor-pointer rounded-xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-700">
+          Choose File
+
+          <input
+            type="file"
+            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+            onChange={handleFile}
+            className="hidden"
+          />
+        </label>
+
+        {selectedFile && (
+          <div className="mx-auto mt-5 max-w-xl rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-green-300">
+            Selected: {selectedFile.name}
+          </div>
+        )}
       </div>
+
+      <button
+        type="button"
+        onClick={startImport}
+        disabled={subjects.length === 0}
+        className="mt-7 rounded-xl bg-green-600 px-6 py-3 font-semibold hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Process File with AI
+      </button>
     </section>
   );
 }
 
-function AiGeneratorTab() {
+function AiGeneratorTab({ subjects }) {
+  const [form, setForm] = useState({
+    library_subject_id: "",
+    topic: "",
+    difficulty: "Medium",
+    count: 10,
+    question_type: "mcq",
+  });
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+  const generateQuestions = () => {
+    if (!form.library_subject_id) {
+      toast.error(
+        "Select the subject where generated questions will be added"
+      );
+      return;
+    }
+
+    if (!form.topic.trim()) {
+      toast.error("Enter a topic");
+      return;
+    }
+
+    toast.success(
+      "AI generation will be connected in the next stage. Generated questions will enter the Review Queue."
+    );
+  };
+
   return (
     <section className="mt-7 rounded-3xl border border-white/10 bg-white/5 p-7">
-      <h2 className="text-2xl font-bold">AI Question Generator</h2>
+      <h2 className="text-2xl font-bold">
+        AI Question Generator
+      </h2>
 
       <p className="mt-2 text-slate-400">
-        Generate draft questions by subject, topic, difficulty, and question
-        type. This feature will be connected after the library workflow is
-        complete.
+        Generate draft questions for a selected subject.
+        All generated questions require examiner approval.
       </p>
 
-      <div className="mt-7 rounded-2xl border border-blue-500/30 bg-blue-500/10 p-6 text-blue-200">
-        AI-generated questions will always require examiner review before they
-        are saved or published.
+      <div className="mt-7 grid max-w-3xl gap-5 md:grid-cols-2">
+        <SelectField
+          label="Library Subject"
+          name="library_subject_id"
+          value={form.library_subject_id}
+          onChange={handleChange}
+        >
+          <option value="">
+            Select library subject
+          </option>
+
+          {subjects.map((subject) => (
+            <option
+              key={subject.library_subject_id}
+              value={
+                subject.library_subject_id
+              }
+            >
+              {subject.subject_name}
+            </option>
+          ))}
+        </SelectField>
+
+        <InputField
+          label="Topic"
+          name="topic"
+          value={form.topic}
+          onChange={handleChange}
+          placeholder="Example: Object-Oriented Programming"
+        />
+
+        <SelectField
+          label="Difficulty"
+          name="difficulty"
+          value={form.difficulty}
+          onChange={handleChange}
+        >
+          <option value="Easy">Easy</option>
+          <option value="Medium">
+            Medium
+          </option>
+          <option value="Hard">Hard</option>
+        </SelectField>
+
+        <SelectField
+          label="Question Type"
+          name="question_type"
+          value={form.question_type}
+          onChange={handleChange}
+        >
+          <option value="mcq">
+            Single Correct MCQ
+          </option>
+          <option value="multi_select">
+            Multiple Correct MCQ
+          </option>
+          <option value="true_false">
+            True / False
+          </option>
+          <option value="fill_blank">
+            Fill in the Blank
+          </option>
+          <option value="numerical">
+            Numerical
+          </option>
+          <option value="short_answer">
+            Short Answer
+          </option>
+          <option value="long_answer">
+            Long Answer
+          </option>
+        </SelectField>
+
+        <InputField
+          label="Number of Questions"
+          name="count"
+          type="number"
+          min="1"
+          max="100"
+          value={form.count}
+          onChange={handleChange}
+        />
       </div>
+
+      <button
+        type="button"
+        onClick={generateQuestions}
+        disabled={subjects.length === 0}
+        className="mt-7 flex items-center gap-2 rounded-xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <FaBrain />
+        Generate Questions
+      </button>
     </section>
   );
 }
 
-function ReviewTab() {
+function ReviewQueueTab() {
   return (
     <section className="mt-7 rounded-3xl border border-white/10 bg-white/5 p-7">
-      <h2 className="text-2xl font-bold">Question Review Queue</h2>
+      <h2 className="text-2xl font-bold">
+        Review Queue
+      </h2>
 
       <p className="mt-2 text-slate-400">
-        AI-extracted and AI-generated draft questions will appear here for
-        approval, editing, or rejection.
+        Imported and AI-generated questions will appear
+        here before being saved to the library.
       </p>
 
       <div className="mt-7 rounded-2xl border border-dashed border-white/10 p-12 text-center">
@@ -699,7 +973,12 @@ function ReviewTab() {
   );
 }
 
-function WorkspaceTab({ active, onClick, icon, text }) {
+function WorkspaceTab({
+  active,
+  onClick,
+  icon,
+  text,
+}) {
   return (
     <button
       type="button"
@@ -723,7 +1002,9 @@ function SummaryItem({ label, value }) {
         {label}
       </p>
 
-      <p className="mt-1 text-xl font-bold">{value}</p>
+      <p className="mt-1 text-xl font-bold">
+        {value}
+      </p>
     </div>
   );
 }
@@ -731,7 +1012,9 @@ function SummaryItem({ label, value }) {
 function StatisticCard({ title, value }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-      <p className="text-sm text-slate-400">{title}</p>
+      <p className="text-sm text-slate-400">
+        {title}
+      </p>
 
       <p className="mt-3 text-4xl font-bold text-purple-300">
         {value}
@@ -754,12 +1037,70 @@ function InformationRow({ label, value }) {
   );
 }
 
+function SelectField({
+  label,
+  name,
+  value,
+  onChange,
+  children,
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-300">
+        {label}
+      </span>
+
+      <select
+        name={name}
+        value={value}
+        onChange={onChange}
+        className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-purple-500"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function InputField({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  min,
+  max,
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-300">
+        {label}
+      </span>
+
+      <input
+        type={type}
+        name={name}
+        min={min}
+        max={max}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-purple-500"
+      />
+    </label>
+  );
+}
+
 function Badge({ text, color }) {
   const styles = {
     blue: "bg-blue-500/15 text-blue-300",
-    purple: "bg-purple-500/15 text-purple-300",
-    green: "bg-green-500/15 text-green-300",
-    orange: "bg-orange-500/15 text-orange-300",
+    purple:
+      "bg-purple-500/15 text-purple-300",
+    green:
+      "bg-green-500/15 text-green-300",
+    orange:
+      "bg-orange-500/15 text-orange-300",
   };
 
   return (
