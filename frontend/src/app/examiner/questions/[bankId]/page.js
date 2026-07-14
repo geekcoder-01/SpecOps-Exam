@@ -2,82 +2,68 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import DashboardLayout from "@/components/layout/DashboardLayout";
-import api from "@/services/api";
-import toast, { Toaster } from "react-hot-toast";
 import {
   FaArrowLeft,
-  FaBookOpen,
   FaBrain,
-  FaCheckCircle,
   FaEdit,
   FaFileImport,
-  FaLayerGroup,
   FaPlus,
   FaQuestionCircle,
   FaSearch,
   FaTrash,
 } from "react-icons/fa";
+import toast, { Toaster } from "react-hot-toast";
 
-export default function QuestionLibraryWorkspace({
-  params,
-}) {
+import DashboardLayout from "@/components/layout/DashboardLayout";
+import LibraryHeader from "@/components/examiner/questions/LibraryHeader";
+import WorkspaceTabs from "@/components/examiner/questions/WorkspaceTabs";
+import ReviewQueue from "@/components/questions/ReviewQueue";
+
+import api from "@/services/api";
+import QuestionLibraryService from "@/services/questionLibraryService";
+
+export default function QuestionLibraryWorkspace({ params }) {
   const { bankId } = use(params);
+
+  const numericBankId = Number(bankId);
 
   const [library, setLibrary] = useState(null);
   const [subjects, setSubjects] = useState([]);
-  const [activeTab, setActiveTab] =
-    useState("overview");
 
-  const [subjectName, setSubjectName] =
-    useState("");
-
+  const [activeTab, setActiveTab] = useState("overview");
+  const [subjectName, setSubjectName] = useState("");
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
 
-  const [addingSubject, setAddingSubject] =
-    useState(false);
+  const [loading, setLoading] = useState(true);
+  const [addingSubject, setAddingSubject] = useState(false);
 
   useEffect(() => {
     loadWorkspace();
   }, [bankId]);
 
   const getHeaders = () => ({
-    Authorization: `Bearer ${localStorage.getItem(
-      "token"
-    )}`,
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
   });
+
+  const handleUnauthorized = () => {
+    localStorage.clear();
+    window.location.href = "/examiner/login";
+  };
 
   const loadWorkspace = async () => {
     try {
       setLoading(true);
 
-      const [
-        libraryResponse,
-        subjectsResponse,
-      ] = await Promise.all([
-        api.get(
-          `/question-libraries/${bankId}`,
-          {
-            headers: getHeaders(),
-          }
-        ),
-
-        api.get(
-          `/question-libraries/${bankId}/subjects`,
-          {
-            headers: getHeaders(),
-          }
-        ),
+      const [libraryData, subjectsData] = await Promise.all([
+        QuestionLibraryService.getLibrary(numericBankId),
+        QuestionLibraryService.getSubjects(numericBankId),
       ]);
 
-      setLibrary(libraryResponse.data);
-      setSubjects(subjectsResponse.data);
+      setLibrary(libraryData);
+      setSubjects(subjectsData);
     } catch (error) {
       if (error.response?.status === 401) {
-        localStorage.clear();
-        window.location.href =
-          "/examiner/login";
+        handleUnauthorized();
         return;
       }
 
@@ -93,7 +79,9 @@ export default function QuestionLibraryWorkspace({
   const addSubject = async (event) => {
     event.preventDefault();
 
-    if (!subjectName.trim()) {
+    const cleanedName = subjectName.trim();
+
+    if (!cleanedName) {
       toast.error("Enter a subject name");
       return;
     }
@@ -104,7 +92,7 @@ export default function QuestionLibraryWorkspace({
       await api.post(
         `/question-libraries/${bankId}/subjects`,
         {
-          subject_name: subjectName.trim(),
+          subject_name: cleanedName,
         },
         {
           headers: getHeaders(),
@@ -116,9 +104,14 @@ export default function QuestionLibraryWorkspace({
 
       await loadWorkspace();
     } catch (error) {
+      if (error.response?.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
       toast.error(
         error.response?.data?.detail ||
-          "Unable to add subject"
+          "Unable to add the subject"
       );
     } finally {
       setAddingSubject(false);
@@ -131,7 +124,9 @@ export default function QuestionLibraryWorkspace({
       subject.subject_name
     );
 
-    if (!newName?.trim()) return;
+    if (!newName?.trim()) {
+      return;
+    }
 
     try {
       await api.put(
@@ -144,22 +139,29 @@ export default function QuestionLibraryWorkspace({
         }
       );
 
-      toast.success("Subject updated");
+      toast.success("Subject updated successfully");
       await loadWorkspace();
     } catch (error) {
+      if (error.response?.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
       toast.error(
         error.response?.data?.detail ||
-          "Unable to update subject"
+          "Unable to update the subject"
       );
     }
   };
 
   const deleteSubject = async (subject) => {
     const confirmed = window.confirm(
-      `Delete "${subject.subject_name}"? Subjects containing questions cannot be deleted.`
+      `Delete "${subject.subject_name}"?\n\nA subject containing questions cannot be deleted.`
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       await api.delete(
@@ -169,12 +171,44 @@ export default function QuestionLibraryWorkspace({
         }
       );
 
-      toast.success("Subject deleted");
+      toast.success("Subject deleted successfully");
       await loadWorkspace();
     } catch (error) {
+      if (error.response?.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
       toast.error(
         error.response?.data?.detail ||
-          "Unable to delete subject"
+          "Unable to delete the subject"
+      );
+    }
+  };
+
+  const deleteQuestion = async (questionId) => {
+    const confirmed = window.confirm(
+      "Permanently delete this question?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await QuestionLibraryService.deleteQuestion(questionId);
+
+      toast.success("Question deleted successfully");
+      await loadWorkspace();
+    } catch (error) {
+      if (error.response?.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
+      toast.error(
+        error.response?.data?.detail ||
+          "Unable to delete the question"
       );
     }
   };
@@ -184,22 +218,16 @@ export default function QuestionLibraryWorkspace({
   const filteredQuestions = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    if (!query) return questions;
+    if (!query) {
+      return questions;
+    }
 
     return questions.filter((question) => {
       return (
-        question.question_text
-          ?.toLowerCase()
-          .includes(query) ||
-        question.question_type
-          ?.toLowerCase()
-          .includes(query) ||
-        question.subject
-          ?.toLowerCase()
-          .includes(query) ||
-        question.difficulty_level
-          ?.toLowerCase()
-          .includes(query)
+        question.question_text?.toLowerCase().includes(query) ||
+        question.question_type?.toLowerCase().includes(query) ||
+        question.subject?.toLowerCase().includes(query) ||
+        question.difficulty_level?.toLowerCase().includes(query)
       );
     });
   }, [questions, search]);
@@ -207,23 +235,25 @@ export default function QuestionLibraryWorkspace({
   const statistics = useMemo(() => {
     return questions.reduce(
       (result, question) => {
-        const type =
-          question.question_type?.toLowerCase();
+        const type = question.question_type?.toLowerCase();
 
         result.total += 1;
 
-        if (type === "mcq") result.mcq += 1;
-        else if (type === "multi_select")
+        if (type === "mcq") {
+          result.mcq += 1;
+        } else if (type === "multi_select") {
           result.multiSelect += 1;
-        else if (type === "short_answer")
+        } else if (type === "short_answer") {
           result.shortAnswer += 1;
-        else if (type === "long_answer")
+        } else if (type === "long_answer") {
           result.longAnswer += 1;
-        else if (type === "true_false")
+        } else if (type === "true_false") {
           result.trueFalse += 1;
-        else if (type === "numerical")
+        } else if (type === "numerical") {
           result.numerical += 1;
-        else result.other += 1;
+        } else {
+          result.other += 1;
+        }
 
         return result;
       },
@@ -266,111 +296,21 @@ export default function QuestionLibraryWorkspace({
       <div className="mx-auto max-w-7xl">
         <Link
           href="/examiner/questions"
-          className="mb-6 inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white"
+          className="mb-6 inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-white"
         >
           <FaArrowLeft />
           Back to Question Libraries
         </Link>
 
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-7">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-            <div className="flex gap-4">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-purple-600/20 text-3xl text-purple-400">
-                <FaBookOpen />
-              </div>
+        <LibraryHeader
+          library={library}
+          subjectsCount={subjects.length}
+        />
 
-              <div>
-                <p className="mb-2 text-sm text-slate-500">
-                  Question Libraries / {library.title}
-                </p>
-
-                <h1 className="text-3xl font-bold">
-                  {library.title}
-                </h1>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {library.purpose && (
-                    <Badge
-                      text={library.purpose}
-                      color="purple"
-                    />
-                  )}
-
-                  <Badge
-                    text={`${library.question_count || 0} Questions`}
-                    color="green"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <SummaryItem
-                label="Subjects"
-                value={subjects.length}
-              />
-
-              <SummaryItem
-                label="Questions"
-                value={
-                  library.question_count || 0
-                }
-              />
-
-              <SummaryItem
-                label="Status"
-                value="Active"
-              />
-            </div>
-          </div>
-        </section>
-
-        <div className="mt-7 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
-          <WorkspaceTab
-            active={activeTab === "overview"}
-            onClick={() =>
-              setActiveTab("overview")
-            }
-            icon={<FaLayerGroup />}
-            text="Overview"
-          />
-
-          <WorkspaceTab
-            active={activeTab === "questions"}
-            onClick={() =>
-              setActiveTab("questions")
-            }
-            icon={<FaQuestionCircle />}
-            text="Questions"
-          />
-
-          <WorkspaceTab
-            active={activeTab === "import"}
-            onClick={() =>
-              setActiveTab("import")
-            }
-            icon={<FaFileImport />}
-            text="Import Questions"
-          />
-
-          <WorkspaceTab
-            active={activeTab === "generator"}
-            onClick={() =>
-              setActiveTab("generator")
-            }
-            icon={<FaBrain />}
-            text="AI Generator"
-          />
-
-          <WorkspaceTab
-            active={activeTab === "review"}
-            onClick={() =>
-              setActiveTab("review")
-            }
-            icon={<FaCheckCircle />}
-            text="Review Queue"
-          />
-        </div>
+        <WorkspaceTabs
+          activeTab={activeTab}
+          onChange={setActiveTab}
+        />
 
         {activeTab === "overview" && (
           <OverviewTab
@@ -393,11 +333,13 @@ export default function QuestionLibraryWorkspace({
             search={search}
             setSearch={setSearch}
             bankId={bankId}
+            deleteQuestion={deleteQuestion}
           />
         )}
 
         {activeTab === "import" && (
           <ImportQuestionsTab
+            bankId={numericBankId}
             subjects={subjects}
           />
         )}
@@ -407,7 +349,11 @@ export default function QuestionLibraryWorkspace({
         )}
 
         {activeTab === "review" && (
-          <ReviewQueueTab />
+          <ReviewQueue
+            bankId={numericBankId}
+            subjects={subjects}
+            onApproved={loadWorkspace}
+          />
         )}
       </div>
     </DashboardLayout>
@@ -474,8 +420,7 @@ function OverviewTab({
             <InformationRow
               label="Purpose"
               value={
-                library.purpose ||
-                "No specific purpose"
+                library.purpose || "No specific purpose"
               }
             />
 
@@ -486,9 +431,7 @@ function OverviewTab({
 
             <InformationRow
               label="Questions"
-              value={
-                library.question_count || 0
-              }
+              value={library.question_count || 0}
             />
           </div>
         </div>
@@ -501,9 +444,8 @@ function OverviewTab({
           </h2>
 
           <p className="mt-1 text-sm text-slate-400">
-            Add one subject for a normal library or
-            multiple subjects for a competitive-exam
-            library.
+            Add one subject for a normal library or multiple
+            subjects for a competitive-exam library.
           </p>
         </div>
 
@@ -517,16 +459,16 @@ function OverviewTab({
               setSubjectName(event.target.value)
             }
             placeholder="Example: Mathematics"
-            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-purple-500"
+            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none transition focus:border-purple-500"
           />
 
           <button
             type="submit"
             disabled={addingSubject}
-            className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-3 font-semibold hover:bg-purple-700 disabled:opacity-60"
+            className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-3 font-semibold transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FaPlus />
-            Add
+            {addingSubject ? "Adding..." : "Add"}
           </button>
         </form>
 
@@ -547,7 +489,7 @@ function OverviewTab({
                   </h3>
 
                   <p className="mt-1 text-sm text-slate-400">
-                    {subject.question_count}{" "}
+                    {subject.question_count || 0}{" "}
                     {subject.question_count === 1
                       ? "question"
                       : "questions"}
@@ -557,22 +499,18 @@ function OverviewTab({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      renameSubject(subject)
-                    }
-                    className="rounded-lg border border-white/10 p-2 text-blue-400 hover:bg-blue-500/10"
+                    onClick={() => renameSubject(subject)}
                     title="Rename subject"
+                    className="rounded-lg border border-white/10 p-2 text-blue-400 transition hover:bg-blue-500/10"
                   >
                     <FaEdit />
                   </button>
 
                   <button
                     type="button"
-                    onClick={() =>
-                      deleteSubject(subject)
-                    }
-                    className="rounded-lg border border-white/10 p-2 text-red-400 hover:bg-red-500/10"
+                    onClick={() => deleteSubject(subject)}
                     title="Delete subject"
+                    className="rounded-lg border border-white/10 p-2 text-red-400 transition hover:bg-red-500/10"
                   >
                     <FaTrash />
                   </button>
@@ -592,6 +530,7 @@ function QuestionsTab({
   search,
   setSearch,
   bankId,
+  deleteQuestion,
 }) {
   return (
     <section className="mt-7 rounded-3xl border border-white/10 bg-white/5 p-6">
@@ -602,14 +541,14 @@ function QuestionsTab({
           </h2>
 
           <p className="mt-1 text-sm text-slate-400">
-            Manage manually created, imported, and
-            AI-generated questions.
+            Manage manually created, imported, and AI-generated
+            questions.
           </p>
         </div>
 
         <Link
           href={`/examiner/questions/${bankId}/add`}
-          className="flex w-fit items-center gap-2 rounded-xl bg-purple-600 px-5 py-3 font-semibold hover:bg-purple-700"
+          className="flex w-fit items-center gap-2 rounded-xl bg-purple-600 px-5 py-3 font-semibold transition hover:bg-purple-700"
         >
           <FaPlus />
           Add Question
@@ -625,14 +564,14 @@ function QuestionsTab({
             setSearch(event.target.value)
           }
           placeholder="Search questions..."
-          className="w-full rounded-xl border border-white/10 bg-slate-900 py-3 pl-11 pr-4 outline-none focus:border-purple-500"
+          className="w-full rounded-xl border border-white/10 bg-slate-900 py-3 pl-11 pr-4 outline-none transition focus:border-purple-500"
         />
       </div>
 
       {subjects.length === 0 && (
         <div className="mt-6 rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-200">
-          Add at least one library subject before
-          creating questions.
+          Add at least one library subject before creating
+          questions.
         </div>
       )}
 
@@ -646,8 +585,8 @@ function QuestionsTab({
             </h3>
 
             <p className="mt-2 text-slate-400">
-              Add questions manually, import a document,
-              or generate questions using AI.
+              Add questions manually, import a document, or
+              generate questions using AI.
             </p>
           </div>
         ) : (
@@ -656,32 +595,59 @@ function QuestionsTab({
               key={question.questionbank_id}
               className="rounded-2xl border border-white/10 bg-slate-900 p-5"
             >
-              <h3 className="text-lg font-semibold">
-                {question.question_text}
-              </h3>
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg font-semibold">
+                    {question.question_text}
+                  </h3>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Badge
-                  text={question.question_type}
-                  color="purple"
-                />
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Badge
+                      text={formatQuestionType(
+                        question.question_type
+                      )}
+                      color="purple"
+                    />
 
-                <Badge
-                  text={question.subject}
-                  color="blue"
-                />
+                    <Badge
+                      text={question.subject || "Subject"}
+                      color="blue"
+                    />
 
-                <Badge
-                  text={`${question.marks} Marks`}
-                  color="green"
-                />
+                    <Badge
+                      text={`${question.marks} Marks`}
+                      color="green"
+                    />
 
-                <Badge
-                  text={
-                    question.difficulty_level
-                  }
-                  color="orange"
-                />
+                    <Badge
+                      text={question.difficulty_level}
+                      color="orange"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Link
+                    href={`/examiner/questions/${bankId}/edit/${question.questionbank_id}`}
+                    title="Edit question"
+                    className="rounded-lg border border-white/10 p-2 text-blue-400 transition hover:bg-blue-500/10"
+                  >
+                    <FaEdit />
+                  </Link>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      deleteQuestion(
+                        question.questionbank_id
+                      )
+                    }
+                    title="Delete question"
+                    className="rounded-lg border border-white/10 p-2 text-red-400 transition hover:bg-red-500/10"
+                  >
+                    <FaTrash />
+                  </button>
+                </div>
               </div>
             </article>
           ))
@@ -691,19 +657,46 @@ function QuestionsTab({
   );
 }
 
-function ImportQuestionsTab({ subjects }) {
-  const [subjectId, setSubjectId] =
-    useState("");
+function ImportQuestionsTab({ bankId, subjects }) {
+  const [subjectId, setSubjectId] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [imports, setImports] = useState([]);
 
-  const [selectedFile, setSelectedFile] =
-    useState(null);
+  useEffect(() => {
+    loadImports();
+  }, [bankId]);
 
-  const handleFile = (event) => {
-    const file = event.target.files?.[0];
-    setSelectedFile(file || null);
+  const getHeaders = () => ({
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+  });
+
+  const loadImports = async () => {
+    try {
+      const response = await api.get(
+        `/question-imports/library/${bankId}`,
+        {
+          headers: getHeaders(),
+        }
+      );
+
+      setImports(response.data);
+    } catch (error) {
+      if (error.response?.status !== 404) {
+        console.error(
+          "Unable to load question imports:",
+          error
+        );
+      }
+    }
   };
 
-  const startImport = () => {
+  const handleFile = (event) => {
+    const file = event.target.files?.[0] || null;
+    setSelectedFile(file);
+  };
+
+  const startImport = async () => {
     if (!subjectId) {
       toast.error(
         "Select the subject where questions will be added"
@@ -716,92 +709,242 @@ function ImportQuestionsTab({ subjects }) {
       return;
     }
 
-    toast.success(
-      "File selected. AI extraction will be connected in the next stage."
+    const formData = new FormData();
+
+    formData.append("bank_id", String(bankId));
+    formData.append(
+      "library_subject_id",
+      String(subjectId)
     );
+    formData.append("file", selectedFile);
+
+    try {
+      setUploading(true);
+
+      await api.post(
+        "/question-imports/upload",
+        formData,
+        {
+          headers: {
+            ...getHeaders(),
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      toast.success("Question file uploaded successfully");
+
+      setSelectedFile(null);
+
+      const fileInput =
+        document.getElementById("question-import-file");
+
+      if (fileInput) {
+        fileInput.value = "";
+      }
+
+      await loadImports();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.detail ||
+          "Unable to upload the question file"
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const deleteImport = async (importId) => {
+    const confirmed = window.confirm(
+      "Delete this import job and its uploaded source file?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await api.delete(
+        `/question-imports/${importId}`,
+        {
+          headers: getHeaders(),
+        }
+      );
+
+      toast.success("Import job deleted");
+      await loadImports();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.detail ||
+          "Unable to delete the import"
+      );
+    }
   };
 
   return (
-    <section className="mt-7 rounded-3xl border border-white/10 bg-white/5 p-7">
-      <h2 className="text-2xl font-bold">
-        Import Questions
-      </h2>
-
-      <p className="mt-2 text-slate-400">
-        Import questions from PDF, Word documents, or
-        images. Extracted questions will be placed in the
-        Review Queue before saving.
-      </p>
-
-      <div className="mt-7 max-w-xl">
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-300">
-            Add extracted questions to
-          </span>
-
-          <select
-            value={subjectId}
-            onChange={(event) =>
-              setSubjectId(event.target.value)
-            }
-            className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-purple-500"
-          >
-            <option value="">
-              Select library subject
-            </option>
-
-            {subjects.map((subject) => (
-              <option
-                key={subject.library_subject_id}
-                value={
-                  subject.library_subject_id
-                }
-              >
-                {subject.subject_name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="mt-7 rounded-3xl border-2 border-dashed border-purple-500/30 bg-purple-500/5 p-12 text-center">
-        <FaFileImport className="mx-auto text-6xl text-purple-400" />
-
-        <h3 className="mt-5 text-2xl font-bold">
-          Choose a question file
-        </h3>
+    <section className="mt-7 space-y-7">
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-7">
+        <h2 className="text-2xl font-bold">
+          Import Questions
+        </h2>
 
         <p className="mt-2 text-slate-400">
-          PDF, DOC, DOCX, JPG, JPEG, PNG, and WEBP are
-          supported.
+          Upload PDF, Word, or image files. Extracted questions
+          will enter the Review Queue before being saved.
         </p>
 
-        <label className="mt-6 inline-flex cursor-pointer rounded-xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-700">
-          Choose File
+        <div className="mt-7 max-w-xl">
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-300">
+              Add extracted questions to
+            </span>
 
-          <input
-            type="file"
-            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
-            onChange={handleFile}
-            className="hidden"
-          />
-        </label>
+            <select
+              value={subjectId}
+              onChange={(event) =>
+                setSubjectId(event.target.value)
+              }
+              className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none transition focus:border-purple-500"
+            >
+              <option value="">
+                Select library subject
+              </option>
 
-        {selectedFile && (
-          <div className="mx-auto mt-5 max-w-xl rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-green-300">
-            Selected: {selectedFile.name}
+              {subjects.map((subject) => (
+                <option
+                  key={subject.library_subject_id}
+                  value={subject.library_subject_id}
+                >
+                  {subject.subject_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-7 rounded-3xl border-2 border-dashed border-purple-500/30 bg-purple-500/5 p-12 text-center">
+          <FaFileImport className="mx-auto text-6xl text-purple-400" />
+
+          <h3 className="mt-5 text-2xl font-bold">
+            Choose a question file
+          </h3>
+
+          <p className="mt-2 text-slate-400">
+            PDF, DOC, DOCX, JPG, JPEG, PNG, and WEBP are
+            supported. Maximum size: 20 MB.
+          </p>
+
+          <label className="mt-6 inline-flex cursor-pointer rounded-xl bg-purple-600 px-6 py-3 font-semibold transition hover:bg-purple-700">
+            Choose File
+
+            <input
+              id="question-import-file"
+              type="file"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+              onChange={handleFile}
+              className="hidden"
+            />
+          </label>
+
+          {selectedFile && (
+            <div className="mx-auto mt-5 max-w-xl rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-green-300">
+              Selected: {selectedFile.name}
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={startImport}
+          disabled={
+            uploading || subjects.length === 0
+          }
+          className="mt-7 rounded-xl bg-green-600 px-6 py-3 font-semibold transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {uploading
+            ? "Uploading..."
+            : "Upload Question File"}
+        </button>
+      </div>
+
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-7">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold">
+              Import History
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-400">
+              Uploaded source files and their processing status.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={loadImports}
+            className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-purple-500"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {imports.length === 0 ? (
+          <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-8 text-center text-slate-400">
+            No question files have been uploaded.
+          </div>
+        ) : (
+          <div className="mt-6 space-y-3">
+            {imports.map((item) => (
+              <div
+                key={item.import_id}
+                className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900 p-5 md:flex-row md:items-center md:justify-between"
+              >
+                <div>
+                  <h3 className="font-semibold">
+                    {item.original_filename}
+                  </h3>
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge
+                      text={item.file_type.toUpperCase()}
+                      color="purple"
+                    />
+
+                    <Badge
+                      text={formatFileSize(
+                        item.file_size
+                      )}
+                      color="blue"
+                    />
+
+                    <Badge
+                      text={item.status}
+                      color={
+                        item.status === "completed"
+                          ? "green"
+                          : item.status === "failed"
+                          ? "red"
+                          : "orange"
+                      }
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    deleteImport(item.import_id)
+                  }
+                  className="flex w-fit items-center gap-2 rounded-xl border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-300 transition hover:bg-red-500/10"
+                >
+                  <FaTrash />
+                  Delete
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
-
-      <button
-        type="button"
-        onClick={startImport}
-        disabled={subjects.length === 0}
-        className="mt-7 rounded-xl bg-green-600 px-6 py-3 font-semibold hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Process File with AI
-      </button>
     </section>
   );
 }
@@ -849,8 +992,8 @@ function AiGeneratorTab({ subjects }) {
       </h2>
 
       <p className="mt-2 text-slate-400">
-        Generate draft questions for a selected subject.
-        All generated questions require examiner approval.
+        Generate draft questions for a selected subject. All
+        generated questions require examiner approval.
       </p>
 
       <div className="mt-7 grid max-w-3xl gap-5 md:grid-cols-2">
@@ -867,9 +1010,7 @@ function AiGeneratorTab({ subjects }) {
           {subjects.map((subject) => (
             <option
               key={subject.library_subject_id}
-              value={
-                subject.library_subject_id
-              }
+              value={subject.library_subject_id}
             >
               {subject.subject_name}
             </option>
@@ -891,9 +1032,7 @@ function AiGeneratorTab({ subjects }) {
           onChange={handleChange}
         >
           <option value="Easy">Easy</option>
-          <option value="Medium">
-            Medium
-          </option>
+          <option value="Medium">Medium</option>
           <option value="Hard">Hard</option>
         </SelectField>
 
@@ -906,21 +1045,27 @@ function AiGeneratorTab({ subjects }) {
           <option value="mcq">
             Single Correct MCQ
           </option>
+
           <option value="multi_select">
             Multiple Correct MCQ
           </option>
+
           <option value="true_false">
             True / False
           </option>
+
           <option value="fill_blank">
             Fill in the Blank
           </option>
+
           <option value="numerical">
             Numerical
           </option>
+
           <option value="short_answer">
             Short Answer
           </option>
+
           <option value="long_answer">
             Long Answer
           </option>
@@ -941,71 +1086,12 @@ function AiGeneratorTab({ subjects }) {
         type="button"
         onClick={generateQuestions}
         disabled={subjects.length === 0}
-        className="mt-7 flex items-center gap-2 rounded-xl bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-7 flex items-center gap-2 rounded-xl bg-purple-600 px-6 py-3 font-semibold transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <FaBrain />
         Generate Questions
       </button>
     </section>
-  );
-}
-
-function ReviewQueueTab() {
-  return (
-    <section className="mt-7 rounded-3xl border border-white/10 bg-white/5 p-7">
-      <h2 className="text-2xl font-bold">
-        Review Queue
-      </h2>
-
-      <p className="mt-2 text-slate-400">
-        Imported and AI-generated questions will appear
-        here before being saved to the library.
-      </p>
-
-      <div className="mt-7 rounded-2xl border border-dashed border-white/10 p-12 text-center">
-        <FaCheckCircle className="mx-auto text-5xl text-green-400" />
-
-        <h3 className="mt-4 text-xl font-bold">
-          No questions awaiting review
-        </h3>
-      </div>
-    </section>
-  );
-}
-
-function WorkspaceTab({
-  active,
-  onClick,
-  icon,
-  text,
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition ${
-        active
-          ? "bg-purple-600 text-white"
-          : "text-slate-400 hover:bg-white/5 hover:text-white"
-      }`}
-    >
-      {icon}
-      {text}
-    </button>
-  );
-}
-
-function SummaryItem({ label, value }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-slate-900 px-5 py-4">
-      <p className="text-xs uppercase tracking-wider text-slate-500">
-        {label}
-      </p>
-
-      <p className="mt-1 text-xl font-bold">
-        {value}
-      </p>
-    </div>
   );
 }
 
@@ -1054,7 +1140,7 @@ function SelectField({
         name={name}
         value={value}
         onChange={onChange}
-        className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-purple-500"
+        className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none transition focus:border-purple-500"
       >
         {children}
       </select>
@@ -1086,7 +1172,7 @@ function InputField({
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none focus:border-purple-500"
+        className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 outline-none transition focus:border-purple-500"
       />
     </label>
   );
@@ -1095,12 +1181,10 @@ function InputField({
 function Badge({ text, color }) {
   const styles = {
     blue: "bg-blue-500/15 text-blue-300",
-    purple:
-      "bg-purple-500/15 text-purple-300",
-    green:
-      "bg-green-500/15 text-green-300",
-    orange:
-      "bg-orange-500/15 text-orange-300",
+    purple: "bg-purple-500/15 text-purple-300",
+    green: "bg-green-500/15 text-green-300",
+    orange: "bg-orange-500/15 text-orange-300",
+    red: "bg-red-500/15 text-red-300",
   };
 
   return (
@@ -1112,4 +1196,36 @@ function Badge({ text, color }) {
       {text}
     </span>
   );
+}
+
+function formatQuestionType(type) {
+  const labels = {
+    mcq: "Single Correct MCQ",
+    multi_select: "Multiple Correct MCQ",
+    true_false: "True / False",
+    fill_blank: "Fill in the Blank",
+    numerical: "Numerical",
+    short_answer: "Short Answer",
+    long_answer: "Long Answer",
+    image_upload: "Image Upload",
+    file_upload: "File Upload",
+  };
+
+  return labels[type] || type;
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) {
+    return "0 Bytes";
+  }
+
+  if (bytes < 1024) {
+    return `${bytes} Bytes`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
