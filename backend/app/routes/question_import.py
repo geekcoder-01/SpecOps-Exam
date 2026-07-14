@@ -11,6 +11,10 @@ from fastapi import (
     UploadFile,
 )
 from sqlalchemy.orm import Session
+from app.services.question_import.text_extractor import (
+    TextExtractionError,
+    extract_text,
+)
 
 from app.database import get_db
 from app.models.question_bank_set import QuestionBankSet
@@ -233,6 +237,80 @@ def get_import_job(
 
     return import_job
 
+@router.post(
+    "/{import_id}/process",
+    response_model=QuestionImportResponse,
+)
+def process_question_import(
+    import_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("Examiner")),
+):
+    import_job = (
+        db.query(QuestionImport)
+        .filter(QuestionImport.import_id == import_id)
+        .first()
+    )
+
+    if not import_job:
+        raise HTTPException(
+            status_code=404,
+            detail="Question import job not found",
+        )
+
+    if import_job.created_by != current_user.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You cannot process another examiner's import",
+        )
+
+    if import_job.status == "processing":
+        raise HTTPException(
+            status_code=400,
+            detail="This import is already being processed",
+        )
+
+    import_job.status = "processing"
+    import_job.error_message = None
+
+    db.commit()
+    db.refresh(import_job)
+
+    try:
+        extracted_text = extract_text(import_job.file_path)
+
+        import_job.extracted_text = extracted_text
+        import_job.status = "text_extracted"
+        import_job.error_message = None
+
+        db.commit()
+        db.refresh(import_job)
+
+        return import_job
+
+    except TextExtractionError as error:
+        import_job.status = "failed"
+        import_job.error_message = str(error)
+
+        db.commit()
+        db.refresh(import_job)
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+    except Exception as error:
+        import_job.status = "failed"
+        import_job.error_message = str(error)
+
+        db.commit()
+        db.refresh(import_job)
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unexpected error while extracting text",
+        )
 
 @router.delete("/{import_id}")
 def delete_import_job(

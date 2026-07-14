@@ -17,6 +17,7 @@ class QuestionImportResponse(BaseModel):
 
     status: str
     error_message: Optional[str] = None
+    extracted_text: Optional[str] = None
 
     created_at: datetime
     updated_at: datetime

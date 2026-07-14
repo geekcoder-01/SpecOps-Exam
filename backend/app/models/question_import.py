@@ -81,6 +81,11 @@ class QuestionImport(Base):
         nullable=True,
     )
 
+    extracted_text = Column(
+    Text,
+    nullable=True,
+)
+
     created_at = Column(
         DateTime,
         default=datetime.utcnow,
