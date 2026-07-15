@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, ForeignKey, Integer, String, Text
 
 from app.database import Base
 
@@ -17,8 +17,7 @@ class QuestionBankSet(Base):
         nullable=False,
     )
 
-    # Kept temporarily for compatibility with older records.
-    # New libraries will not use this field.
+    # Legacy field retained temporarily.
     subject = Column(
         String(100),
         nullable=True,
@@ -27,4 +26,20 @@ class QuestionBankSet(Base):
     purpose = Column(
         Text,
         nullable=True,
+    )
+
+    created_by = Column(
+        Integer,
+        ForeignKey(
+            "users.user_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        index=True,
+    )
+
+    visibility = Column(
+        String(20),
+        nullable=False,
+        default="private",
     )

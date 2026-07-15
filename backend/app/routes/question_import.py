@@ -11,18 +11,25 @@ from fastapi import (
     UploadFile,
 )
 from sqlalchemy.orm import Session
-from app.services.question_import.text_extractor import (
-    TextExtractionError,
-    extract_text,
-)
 
 from app.database import get_db
+from app.models.draft_question import DraftQuestion
 from app.models.question_bank_set import QuestionBankSet
 from app.models.question_import import QuestionImport
 from app.models.question_library_subject import QuestionLibrarySubject
 from app.models.user import User
 from app.routes.auth import require_role
-from app.schemas.question_import import QuestionImportResponse
+from app.schemas.question_import import (
+    QuestionImportProcessResponse,
+    QuestionImportResponse,
+)
+from app.services.question_import.question_parser import (
+    parse_questions,
+)
+from app.services.question_import.text_extractor import (
+    TextExtractionError,
+    extract_text,
+)
 
 router = APIRouter()
 
@@ -31,7 +38,7 @@ UPLOAD_DIRECTORY = Path("uploads/question-imports")
 
 ALLOWED_EXTENSIONS = {
     ".pdf",
-    ".doc",
+    ".docx",
     ".docx",
     ".jpg",
     ".jpeg",
@@ -40,6 +47,36 @@ ALLOWED_EXTENSIONS = {
 }
 
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+
+
+def get_import_or_404(
+    import_id: int,
+    db: Session,
+) -> QuestionImport:
+    import_job = (
+        db.query(QuestionImport)
+        .filter(QuestionImport.import_id == import_id)
+        .first()
+    )
+
+    if not import_job:
+        raise HTTPException(
+            status_code=404,
+            detail="Question import job not found",
+        )
+
+    return import_job
+
+
+def verify_import_owner(
+    import_job: QuestionImport,
+    current_user: User,
+):
+    if import_job.created_by != current_user.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You cannot access another examiner's import",
+        )
 
 
 def get_library_and_subject(
@@ -81,7 +118,7 @@ def get_library_and_subject(
     return library, subject
 
 
-def validate_file(file: UploadFile):
+def validate_file(file: UploadFile) -> str:
     if not file.filename:
         raise HTTPException(
             status_code=400,
@@ -162,6 +199,8 @@ def upload_question_file(
             file_path=str(destination),
             file_size=file_size,
             status="uploaded",
+            error_message=None,
+            extracted_text=None,
         )
 
         db.add(import_job)
@@ -179,7 +218,7 @@ def upload_question_file(
         raise HTTPException(
             status_code=500,
             detail=f"Unable to upload file: {str(error)}",
-        )
+        ) from error
 
     finally:
         file.file.close()
@@ -208,7 +247,10 @@ def get_library_imports(
 
     return (
         db.query(QuestionImport)
-        .filter(QuestionImport.bank_id == bank_id)
+        .filter(
+            QuestionImport.bank_id == bank_id,
+            QuestionImport.created_by == current_user.user_id,
+        )
         .order_by(QuestionImport.import_id.desc())
         .all()
     )
@@ -223,46 +265,37 @@ def get_import_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("Examiner")),
 ):
-    import_job = (
-        db.query(QuestionImport)
-        .filter(QuestionImport.import_id == import_id)
-        .first()
-    )
+    import_job = get_import_or_404(import_id, db)
 
-    if not import_job:
-        raise HTTPException(
-            status_code=404,
-            detail="Question import job not found",
-        )
+    verify_import_owner(
+        import_job=import_job,
+        current_user=current_user,
+    )
 
     return import_job
 
+
 @router.post(
     "/{import_id}/process",
-    response_model=QuestionImportResponse,
+    response_model=QuestionImportProcessResponse,
 )
 def process_question_import(
     import_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("Examiner")),
 ):
-    import_job = (
-        db.query(QuestionImport)
-        .filter(QuestionImport.import_id == import_id)
-        .first()
+    import_job = get_import_or_404(import_id, db)
+
+    verify_import_owner(
+        import_job=import_job,
+        current_user=current_user,
     )
 
-    if not import_job:
-        raise HTTPException(
-            status_code=404,
-            detail="Question import job not found",
-        )
-
-    if import_job.created_by != current_user.user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You cannot process another examiner's import",
-        )
+    get_library_and_subject(
+        bank_id=import_job.bank_id,
+        library_subject_id=import_job.library_subject_id,
+        db=db,
+    )
 
     if import_job.status == "processing":
         raise HTTPException(
@@ -279,38 +312,108 @@ def process_question_import(
     try:
         extracted_text = extract_text(import_job.file_path)
 
+        parsed_questions = parse_questions(extracted_text)
+
+        if not parsed_questions:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Text was extracted, but no recognizable "
+                    "questions were found"
+                ),
+            )
+
+        # Remove old pending/rejected drafts before reprocessing.
+        db.query(DraftQuestion).filter(
+            DraftQuestion.import_id == import_job.import_id,
+            DraftQuestion.status.in_(["pending", "rejected"]),
+        ).delete(
+            synchronize_session=False,
+        )
+
+        drafts_created = 0
+
+        for parsed in parsed_questions:
+            draft = DraftQuestion(
+                bank_id=import_job.bank_id,
+                library_subject_id=import_job.library_subject_id,
+                import_id=import_job.import_id,
+                created_by=current_user.user_id,
+                source_type="import",
+                question_text=parsed.question_text,
+                question_type=parsed.question_type,
+                option_a=parsed.option_a,
+                option_b=parsed.option_b,
+                option_c=parsed.option_c,
+                option_d=parsed.option_d,
+                correct_answer=parsed.correct_answer,
+                marks=parsed.marks,
+                difficulty_level=parsed.difficulty_level,
+                status="pending",
+                confidence_score=parsed.confidence_score,
+                review_notes=None,
+            )
+
+            db.add(draft)
+            drafts_created += 1
+
         import_job.extracted_text = extracted_text
-        import_job.status = "text_extracted"
+        import_job.status = "completed"
         import_job.error_message = None
 
         db.commit()
         db.refresh(import_job)
 
-        return import_job
+        return {
+            "message": (
+                "Question file processed successfully. "
+                "Draft questions are ready for review."
+            ),
+            "import_id": import_job.import_id,
+            "status": import_job.status,
+            "drafts_created": drafts_created,
+            "extracted_text_length": len(extracted_text),
+        }
 
     except TextExtractionError as error:
+        db.rollback()
+
+        import_job = get_import_or_404(import_id, db)
         import_job.status = "failed"
         import_job.error_message = str(error)
 
         db.commit()
-        db.refresh(import_job)
 
         raise HTTPException(
             status_code=400,
             detail=str(error),
-        )
+        ) from error
+
+    except HTTPException as error:
+        db.rollback()
+
+        import_job = get_import_or_404(import_id, db)
+        import_job.status = "failed"
+        import_job.error_message = str(error.detail)
+
+        db.commit()
+
+        raise
 
     except Exception as error:
+        db.rollback()
+
+        import_job = get_import_or_404(import_id, db)
         import_job.status = "failed"
         import_job.error_message = str(error)
 
         db.commit()
-        db.refresh(import_job)
 
         raise HTTPException(
             status_code=500,
-            detail="Unexpected error while extracting text",
-        )
+            detail="Unexpected error while processing the question file",
+        ) from error
+
 
 @router.delete("/{import_id}")
 def delete_import_job(
@@ -318,23 +421,42 @@ def delete_import_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("Examiner")),
 ):
-    import_job = (
-        db.query(QuestionImport)
-        .filter(QuestionImport.import_id == import_id)
-        .first()
-    )
+    import_job = get_import_or_404(import_id, db)
 
-    if not import_job:
-        raise HTTPException(
-            status_code=404,
-            detail="Question import job not found",
-        )
+    verify_import_owner(
+        import_job=import_job,
+        current_user=current_user,
+    )
 
     if import_job.status == "processing":
         raise HTTPException(
             status_code=400,
             detail="A processing import cannot be deleted",
         )
+
+    approved_draft_count = (
+        db.query(DraftQuestion)
+        .filter(
+            DraftQuestion.import_id == import_id,
+            DraftQuestion.status == "approved",
+        )
+        .count()
+    )
+
+    if approved_draft_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This import contains approved questions "
+                "and cannot be deleted"
+            ),
+        )
+
+    db.query(DraftQuestion).filter(
+        DraftQuestion.import_id == import_id
+    ).delete(
+        synchronize_session=False,
+    )
 
     file_path = Path(import_job.file_path)
 

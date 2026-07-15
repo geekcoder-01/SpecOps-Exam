@@ -24,3 +24,11 @@ class QuestionImportResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class QuestionImportProcessResponse(BaseModel):
+    message: str
+    import_id: int
+    status: str
+    drafts_created: int
+    extracted_text_length: int

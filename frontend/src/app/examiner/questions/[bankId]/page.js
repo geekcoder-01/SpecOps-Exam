@@ -21,6 +21,7 @@ import ReviewQueue from "@/components/questions/ReviewQueue";
 
 import api from "@/services/api";
 import QuestionLibraryService from "@/services/questionLibraryService";
+import ImportQuestionsTab from "@/components/examiner/questions/ImportQuestionsTab";
 
 export default function QuestionLibraryWorkspace({ params }) {
   const { bankId } = use(params);
@@ -337,10 +338,12 @@ export default function QuestionLibraryWorkspace({ params }) {
           />
         )}
 
+
         {activeTab === "import" && (
           <ImportQuestionsTab
             bankId={numericBankId}
             subjects={subjects}
+            onProcessed={() => setActiveTab("review")}
           />
         )}
 
@@ -657,7 +660,7 @@ function QuestionsTab({
   );
 }
 
-function ImportQuestionsTab({ bankId, subjects }) {
+function LegacyImportQuestionsTab({ bankId, subjects }) {
   const [subjectId, setSubjectId] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
