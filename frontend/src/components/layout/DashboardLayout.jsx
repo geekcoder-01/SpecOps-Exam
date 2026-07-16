@@ -50,7 +50,10 @@ export default function DashboardLayout({
     } catch (error) {
       console.error("Unable to load logged-in user:", error);
 
-      if (error.response?.status === 401) {
+      if (
+        error.response?.status === 401 ||
+        error.response?.status === 403
+      ) {
         localStorage.clear();
         redirectToLogin();
       }
