@@ -37,6 +37,8 @@ from app.models.question_library_subject import QuestionLibrarySubject
 from app.models.question_import import QuestionImport
 from app.models.draft_question import DraftQuestion
 from app.models.question_library_member import QuestionLibraryMember
+from app.models.exam_section import ExamSection
+from app.models.exam_question import ExamQuestion
 
 target_metadata = Base.metadata
 

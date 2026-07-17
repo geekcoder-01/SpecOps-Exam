@@ -33,6 +33,7 @@ from app.routes import profile
 from app.routes import question_library_subject
 from app.routes import question_import
 from app.routes import draft_question
+from app.routes import exam_section
 
 Base.metadata.create_all(bind=engine)
 
@@ -111,6 +112,12 @@ app.include_router(
     draft_question.router,
     prefix="/draft-questions",
     tags=["Draft Questions"],
+)
+
+app.include_router(
+    exam_section.router,
+    prefix="/exam-sections",
+    tags=["Exam Sections"],
 )
 
 @app.get("/")
